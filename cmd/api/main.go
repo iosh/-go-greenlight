@@ -9,6 +9,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/iosh/go-greenlight/internal/data"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -35,6 +36,7 @@ type config struct {
 type application struct {
 	config config
 	logger *log.Logger
+	models data.Models
 }
 
 func main() {
@@ -58,6 +60,7 @@ func main() {
 	app := &application{
 		config: cfg,
 		logger: logger,
+		models: data.NewModels(db),
 	}
 	srv := &http.Server{
 		Addr:         fmt.Sprintf(":%d", cfg.port),
