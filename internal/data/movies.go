@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/iosh/go-greenlight/internal/validator"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -52,8 +53,10 @@ func (m MovieModel) Get(id int64) (*Movie, error) {
 	}
 
 	var movie Movie
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
 
-	if err := m.DB.QueryRow(context.Background(), "select id, create_at, title, year, runtime, genres, version from movies where id=$1", id).Scan(
+	if err := m.DB.QueryRow(ctx, "select id, create_at, title, year, runtime, genres, version from movies where id=$1", id).Scan(
 		&movie.ID,
 		&movie.CreatedAt,
 		&movie.Title,
@@ -70,11 +73,13 @@ func (m MovieModel) Get(id int64) (*Movie, error) {
 
 func (m MovieModel) Update(movie *Movie) error {
 
-	args := []any{movie.Title, movie.Year, movie.Runtime, movie.Genres, movie.ID}
+	args := []any{movie.Title, movie.Year, movie.Runtime, movie.Genres, movie.ID, movie.Version}
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
 
 	if err := m.DB.QueryRow(
-		context.Background(),
-		"update movies set title=$1, year=$2, runtime=$3, genres=$4, version=version+1 where id=$5 returning version",
+		ctx,
+		"update movies set title=$1, year=$2, runtime=$3, genres=$4, version=version+1 where id=$5 and version=$6 returning version",
 		args...,
 	).Scan(&movie.Version); err != nil {
 		return err
@@ -84,10 +89,35 @@ func (m MovieModel) Update(movie *Movie) error {
 }
 
 func (m MovieModel) Delete(id int64) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
 
-	_, err := m.DB.Exec(context.Background(), "delete from movies where id=$1", id)
+	_, err := m.DB.Exec(ctx, "delete from movies where id=$1", id)
 	if err != nil {
 		return err
 	}
 	return nil
+}
+
+func (m MovieModel) GetAll(title string, genres []string, filters Filters) ([]*Movie, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	row, err := m.DB.Query(ctx, "select id, create_at, title, year, runtime, genres, version from movies where (LOWER(title) = LOWER($1) or $1='')AND (genres @> $2 OR $2 = '{}')  order by id", title, genres)
+
+	if err != nil {
+		return nil, err
+	}
+
+	movies, err := pgx.CollectRows(row, func(row pgx.CollectableRow) (*Movie, error) {
+		var movie Movie
+		e := row.Scan(&movie.ID, &movie.CreatedAt, &movie.Title, &movie.Year, &movie.Runtime, &movie.Genres, &movie.Version)
+		return &movie, e
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return movies, nil
+
 }
