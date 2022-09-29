@@ -2,6 +2,7 @@ package data
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/iosh/go-greenlight/internal/validator"
@@ -99,25 +100,36 @@ func (m MovieModel) Delete(id int64) error {
 	return nil
 }
 
-func (m MovieModel) GetAll(title string, genres []string, filters Filters) ([]*Movie, error) {
+func (m MovieModel) GetAll(title string, genres []string, filters Filters) ([]*Movie, Metadata, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 
-	row, err := m.DB.Query(ctx, "select id, create_at, title, year, runtime, genres, version from movies where (LOWER(title) = LOWER($1) or $1='')AND (genres @> $2 OR $2 = '{}')  order by id", title, genres)
+	query := fmt.Sprintf(`
+	SELECT count(*) OVER(), id, create_at, title, year, runtime, genres, version
+	FROM movies
+	WHERE (to_tsvector('simple', title) @@ plainto_tsquery('simple', $1) OR $1 = '') 
+	AND (genres @> $2 OR $2 = '{}')     
+	ORDER BY %s %s, id ASC
+	limit $3 offset $4
+	`, filters.sortColumn(), filters.sortDirection())
+
+	row, err := m.DB.Query(ctx, query, title, genres, filters.limit(), filters.offset())
 
 	if err != nil {
-		return nil, err
+		return nil, Metadata{}, err
 	}
+	totalRecords := 0
 
 	movies, err := pgx.CollectRows(row, func(row pgx.CollectableRow) (*Movie, error) {
 		var movie Movie
-		e := row.Scan(&movie.ID, &movie.CreatedAt, &movie.Title, &movie.Year, &movie.Runtime, &movie.Genres, &movie.Version)
+		e := row.Scan(&totalRecords, &movie.ID, &movie.CreatedAt, &movie.Title, &movie.Year, &movie.Runtime, &movie.Genres, &movie.Version)
 		return &movie, e
 	})
 	if err != nil {
-		return nil, err
+		return nil, Metadata{}, err
 	}
 
-	return movies, nil
+	metadata := calculateMetadata(totalRecords, filters.Page, filters.PageSize)
+	return movies, metadata, nil
 
 }

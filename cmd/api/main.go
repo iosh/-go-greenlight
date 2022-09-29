@@ -4,12 +4,12 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"log"
 	"net/http"
 	"os"
 	"time"
 
 	"github.com/iosh/go-greenlight/internal/data"
+	"github.com/iosh/go-greenlight/internal/jsonlog"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -35,7 +35,7 @@ type config struct {
 
 type application struct {
 	config config
-	logger *log.Logger
+	logger *jsonlog.Logger
 	models data.Models
 }
 
@@ -48,15 +48,14 @@ func main() {
 
 	flag.Parse()
 
-	logger := log.New(os.Stdout, "", log.Ldate|log.Ltime)
-
 	db, err := openDB(cfg)
 
-	if err != nil {
-		logger.Fatal(err)
-	}
 	defer db.Close()
 
+	logger := jsonlog.New(os.Stdout, jsonlog.LevelInfo)
+	if err != nil {
+		logger.PrintFatal(err, nil)
+	}
 	app := &application{
 		config: cfg,
 		logger: logger,
