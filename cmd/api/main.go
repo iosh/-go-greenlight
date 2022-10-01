@@ -3,10 +3,7 @@ package main
 import (
 	"context"
 	"flag"
-	"fmt"
-	"net/http"
 	"os"
-	"time"
 
 	"github.com/iosh/go-greenlight/internal/data"
 	"github.com/iosh/go-greenlight/internal/jsonlog"
@@ -47,12 +44,15 @@ func main() {
 	flag.StringVar(&cfg.db.dsn, "db-dsn", "postgres://root:root@localhost/greenlight?sslmode=disable", "PostgreSQL DSN")
 
 	flag.Parse()
-
+	logger := jsonlog.New(os.Stdout, jsonlog.LevelInfo)
 	db, err := openDB(cfg)
+
+	if err != nil {
+		logger.PrintFatal(err, nil)
+	}
 
 	defer db.Close()
 
-	logger := jsonlog.New(os.Stdout, jsonlog.LevelInfo)
 	if err != nil {
 		logger.PrintFatal(err, nil)
 	}
@@ -61,16 +61,7 @@ func main() {
 		logger: logger,
 		models: data.NewModels(db),
 	}
-	srv := &http.Server{
-		Addr:         fmt.Sprintf(":%d", cfg.port),
-		Handler:      app.routers(),
-		IdleTimeout:  time.Minute,
-		ReadTimeout:  10 * time.Second,
-		WriteTimeout: 10 * time.Second,
-	}
+	serverErr := app.serve()
 
-	logger.Printf("starting %s server on %s", cfg.env, srv.Addr)
-	serverErr := srv.ListenAndServe()
-
-	logger.Fatal(serverErr)
+	logger.PrintFatal(serverErr, nil)
 }

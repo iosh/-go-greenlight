@@ -6,7 +6,7 @@ import (
 	"github.com/julienschmidt/httprouter"
 )
 
-func (app *application) routers() *httprouter.Router {
+func (app *application) routers() http.Handler {
 
 	router := httprouter.New()
 
@@ -19,5 +19,7 @@ func (app *application) routers() *httprouter.Router {
 	router.HandlerFunc(http.MethodGet, "/v1/movies/:id", app.showMovieHandler)
 	router.HandlerFunc(http.MethodPatch, "/v1/movies/:id", app.updateMovieHandler)
 	router.HandlerFunc(http.MethodDelete, "/v1/movies/:id", app.deleteMovieHandler)
-	return router
+
+	router.HandlerFunc(http.MethodPost, "/v1/users", app.registerUserHandler)
+	return app.recoverPanic(router)
 }
